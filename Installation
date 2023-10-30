@@ -1,0 +1,19 @@
+# To install scCODA via pip, call:
+
+pip install sccoda
+
+# To install scCODA from source:
+# Navigate to the directory you want scCODA in
+# Clone the repository from github:
+
+git clone https://github.com/theislab/scCODA
+
+# Navigate to the root directory of scCODA:
+
+cd scCODA
+Install dependencies:
+
+pip install -r requirements.txt
+Import scCODA in a Python session via:
+
+import sccoda
