@@ -1,0 +1,142 @@
+# detailed protocol is avilable in << https://sccoda.readthedocs.io/en/latest/getting_started.html>>
+
+import sccoda
+
+import importlib
+import warnings
+warnings.filterwarnings("ignore")
+
+import pandas as pd
+import pickle as pkl
+import matplotlib.pyplot as plt
+
+from sccoda.util import comp_ana as mod
+from sccoda.util import cell_composition_data as dat
+from sccoda.util import data_visualization as viz
+
+import sccoda.datasets as scd
+
+import scanpy
+
+cell_counts = pd.read_csv('PD2.csv')
+print(cell_counts)
+
+data_all = dat.from_pandas(cell_counts, covariate_columns=["condition"])
+print(data_all.X)
+print(data_all.obs)
+
+viz.stacked_barplot(data_all, feature_name="condition")
+plt.show()
+
+data_WT = data_all[data_all.obs["condition"].isin(["WT_MI", "WT_Sham"])]
+print(data_WT.obs)
+
+data_KO = data_all[data_all.obs["condition"].isin(["KO_MI", "KO_Sham"])]
+print(data_KO.obs)
+
+data_MI = data_all[data_all.obs["condition"].isin(["KO_MI", "WT_MI"])]
+print(data_MI.obs)
+
+data_Sham = data_all[data_all.obs["condition"].isin(["KO_Sham", "WT_Sham"])]
+print(data_Sham.obs)
+
+viz.rel_abundance_dispersion_plot(
+    data=data_all,
+    abundant_threshold=0.9
+)
+plt.show()
+
+viz.rel_abundance_dispersion_plot(
+    data=data_WT,
+    abundant_threshold=0.9
+)
+plt.show()
+
+viz.rel_abundance_dispersion_plot(
+    data=data_KO,
+    abundant_threshold=0.9
+)
+plt.show()
+
+viz.rel_abundance_dispersion_plot(
+    data=data_MI,
+    abundant_threshold=0.9
+)
+plt.show()
+
+viz.rel_abundance_dispersion_plot(
+    data=data_Sham,
+    abundant_threshold=0.9
+)
+plt.show()
+
+model_all = mod.CompositionalAnalysis(data_all, formula="condition", reference_cell_type="automatic")
+
+sim_results = model_all.sample_hmc()
+
+sim_results.summary()
+
+model_MI = mod.CompositionalAnalysis(data_MI, formula="C(condition, Treatment('KO_MI'))", reference_cell_type="automatic")
+switch_results = model_MI.sample_hmc()
+switch_results.summary()
+
+switch_results.set_fdr(est_fdr=0.4)
+switch_results.summary()
+
+switch_results.summary_extended(hdi_prob=0.9)
+
+print(switch_results.credible_effects())
+
+pip install arviz
+
+import arviz as az
+import numpy as np
+
+az.plot_trace(
+    switch_results,
+    divergences=False,
+    var_names=["alpha", "beta"],
+    coords={"cell_type": switch_results.posterior.coords["cell_type_nb"]},
+    legend=True,
+    figsize=(20, 6)
+)
+plt.show()
+
+cell_types = data_KO.var.index
+results_cycle = pd.DataFrame(index=cell_types, columns=["times_credible"]).fillna(0)
+
+for ct in cell_types:
+    print(f"Reference: {ct}")
+
+    # Run inference
+    model_temp = mod.CompositionalAnalysis(data_KO, formula="condition", reference_cell_type=ct)
+    temp_results = model_temp.sample_hmc(num_results=20000)
+
+    # Select credible effects
+    cred_eff = temp_results.credible_effects()
+    cred_eff.index = cred_eff.index.droplevel(level=0)
+
+    # add up credible effects
+    results_cycle["times_credible"] += cred_eff.astype("int")
+
+results_cycle["pct_credible"] = results_cycle["times_credible"]/len(cell_types)
+results_cycle["is_credible"] = results_cycle["pct_credible"] > 0.5
+print(results_cycle)
+
+from sccoda.model import other_models as om
+
+ancom_model = om.AncomModel(data_KO, covariate_column="condition")
+ancom_model.fit_model()
+print(ancom_model.ancom_out)
+
+r_home = "/Library/Frameworks/R.framework/Resources"
+r_path = "/Library/Frameworks/R.framework/Resources/bin/R"
+
+aldex2_model = om.ALDEx2Model(data_KO, covariate_column="condition")
+aldex2_model.fit_model(r_home=r_home, r_path=r_path)
+print(aldex2_model.result)
+
+sccoda.model.other_models.TTest.eval_model(ground_truth=data_KO, alpha=0.05, fdr_correct=True)
+
+sccoda.model.other_models.TTest(data_MI, covariate_column='condition')
+
